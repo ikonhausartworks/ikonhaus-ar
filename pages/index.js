@@ -15,8 +15,10 @@ export default function IkonhausAR() {
   const [artworkPlaced, setArtworkPlaced] = useState(false);
   const [artworkPosition, setArtworkPosition] = useState({ x: 50, y: 50 });
   const [artworkScale, setArtworkScale] = useState(1);
+  const [cameraReady, setCameraReady] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const containerRef = useRef(null);
   const portraitInputRef = useRef(null);
   const landscapeInputRef = useRef(null);
 
@@ -37,62 +39,104 @@ export default function IkonhausAR() {
 
   const startCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert('Your browser does not support camera access. Please try Chrome, Safari, or Firefox on mobile.');
+      alert('Your browser does not support camera access. Please try Chrome on mobile.');
       return;
     }
 
-    try {
-      console.log('Requesting camera...');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        }
-      });
-      
-      console.log('Camera stream obtained:', stream);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
+    // First, transition to camera view
+    setStep('camera');
+    setCameraReady(false);
+
+    // Small delay to ensure DOM is ready
+    setTimeout(async () => {
+      try {
+        console.log('Requesting camera access...');
         
-        // Force video to play
-        try {
-          await videoRef.current.play();
-          console.log('Video playing');
-        } catch (playErr) {
-          console.error('Video play error:', playErr);
+        const constraints = {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Got camera stream:', stream.getVideoTracks()[0].getSettings());
+
+        if (videoRef.current && stream) {
+          // Set up video element
+          const video = videoRef.current;
+          video.srcObject = stream;
+          streamRef.current = stream;
+          
+          // Force attributes
+          video.setAttribute('playsinline', 'true');
+          video.setAttribute('autoplay', 'true');
+          video.setAttribute('muted', 'true');
+          video.muted = true;
+          video.playsInline = true;
+          
+          // Wait for metadata
+          video.onloadedmetadata = () => {
+            console.log('Video metadata loaded');
+            video.play()
+              .then(() => {
+                console.log('Video is playing!');
+                setCameraReady(true);
+              })
+              .catch(err => {
+                console.error('Play failed:', err);
+                alert('Video play failed: ' + err.message);
+              });
+          };
+
+          // Backup: try to play after a delay
+          setTimeout(() => {
+            if (!cameraReady) {
+              video.play()
+                .then(() => {
+                  console.log('Video playing after timeout');
+                  setCameraReady(true);
+                })
+                .catch(err => console.error('Delayed play failed:', err));
+            }
+          }, 500);
         }
+      } catch (err) {
+        console.error('Camera error:', err);
+        alert(`Camera failed: ${err.name} - ${err.message}\n\nTry:\n1. Check camera permissions\n2. Use Chrome browser\n3. Reload page`);
+        setStep('preview');
       }
-      
-      // Small delay to ensure video is ready
-      setTimeout(() => {
-        setStep('camera');
-        console.log('Switched to camera view');
-      }, 200);
-    } catch (err) {
-      console.error('Camera error:', err);
-      alert(`Camera Error: ${err.message}\n\nPlease enable camera permissions in your browser settings.`);
-    }
+    }, 100);
   };
 
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track');
+      });
+      streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraReady(false);
     setStep('preview');
     setArtworkPlaced(false);
   };
 
   const placeArtwork = (e) => {
-    if (step !== 'camera') return;
+    if (step !== 'camera' || !cameraReady) return;
     
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
     
     let clientX, clientY;
-    if (e.touches && e.touches.length > 0) {
+    if (e.type === 'touchend' && e.changedTouches && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
+    } else if (e.touches && e.touches.length > 0) {
       clientX = e.touches[0].clientX;
       clientY = e.touches[0].clientY;
     } else {
@@ -100,6 +144,7 @@ export default function IkonhausAR() {
       clientY = e.clientY;
     }
     
+    const rect = containerRef.current.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * 100;
     const y = ((clientY - rect.top) / rect.height) * 100;
     
@@ -266,33 +311,64 @@ export default function IkonhausAR() {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'black', overflow: 'hidden' }}>
+    <div 
+      ref={containerRef}
+      style={{ 
+        position: 'fixed', 
+        inset: 0, 
+        background: '#000',
+        overflow: 'hidden',
+        WebkitUserSelect: 'none',
+        userSelect: 'none'
+      }}
+    >
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
+        webkit-playsinline="true"
         style={{ 
-          position: 'absolute', 
-          inset: 0, 
-          width: '100%', 
-          height: '100%', 
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
           objectFit: 'cover',
           backgroundColor: '#000',
-          transform: 'scaleX(-1)'
-        }}
-        onLoadedMetadata={(e) => {
-          console.log('Video metadata loaded:', e.target.videoWidth, 'x', e.target.videoHeight);
-          e.target.play().catch(err => console.error('Play error:', err));
-        }}
-        onCanPlay={(e) => {
-          console.log('Video can play');
-          e.target.play().catch(err => console.error('Play error:', err));
+          display: 'block'
         }}
       />
 
+      {!cameraReady && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)',
+          color: 'white',
+          fontSize: '1.125rem',
+          textAlign: 'center',
+          zIndex: 20
+        }}>
+          <div style={{ 
+            background: 'rgba(0,0,0,0.7)', 
+            padding: '1.5rem', 
+            borderRadius: '0.75rem' 
+          }}>
+            Loading camera...
+          </div>
+        </div>
+      )}
+
       <div 
-        style={{ position: 'absolute', inset: 0, cursor: 'crosshair', touchAction: 'none' }}
+        style={{ 
+          position: 'absolute', 
+          inset: 0, 
+          cursor: 'crosshair',
+          touchAction: 'manipulation',
+          zIndex: 5
+        }}
         onClick={placeArtwork}
         onTouchEnd={placeArtwork}
       >
@@ -306,21 +382,38 @@ export default function IkonhausAR() {
               width: `${dimensions.width}px`,
               height: `${dimensions.height}px`,
               transition: 'all 0.2s',
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              zIndex: 6
             }}
           >
             <img
               src={currentImage}
               alt="Artwork"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'cover', 
+                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                display: 'block'
+              }}
             />
           </div>
         )}
       </div>
 
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)', padding: '1rem', zIndex: 10 }}>
+      <div style={{ 
+        position: 'absolute', 
+        top: 0, 
+        left: 0, 
+        right: 0, 
+        background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)', 
+        padding: '1rem', 
+        zIndex: 10 
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ color: 'white', fontWeight: '600', fontSize: '1.125rem', margin: 0 }}>Ikonhaus AR</h2>
+          <h2 style={{ color: 'white', fontWeight: '600', fontSize: '1.125rem', margin: 0 }}>
+            Ikonhaus AR {cameraReady ? '✓' : '...'}
+          </h2>
           <button
             onClick={stopCamera}
             style={{
@@ -338,9 +431,22 @@ export default function IkonhausAR() {
         </div>
       </div>
 
-      {!artworkPlaced && (
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', zIndex: 5 }}>
-          <div style={{ background: 'rgba(0,0,0,0.7)', color: 'white', padding: '1rem 1.5rem', borderRadius: '0.75rem', backdropFilter: 'blur(4px)' }}>
+      {!artworkPlaced && cameraReady && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)', 
+          textAlign: 'center', 
+          zIndex: 8 
+        }}>
+          <div style={{ 
+            background: 'rgba(0,0,0,0.7)', 
+            color: 'white', 
+            padding: '1rem 1.5rem', 
+            borderRadius: '0.75rem',
+            backdropFilter: 'blur(4px)'
+          }}>
             <Move style={{ margin: '0 auto 0.5rem' }} size={32} />
             <p style={{ fontWeight: '500', margin: '0 0 0.25rem 0' }}>Tap anywhere on the wall</p>
             <p style={{ fontSize: '0.875rem', color: '#cbd5e1', margin: 0 }}>to place your artwork</p>
@@ -348,7 +454,16 @@ export default function IkonhausAR() {
         </div>
       )}
 
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', padding: '1rem', paddingBottom: '2rem', zIndex: 10 }}>
+      <div style={{ 
+        position: 'absolute', 
+        bottom: 0, 
+        left: 0, 
+        right: 0, 
+        background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', 
+        padding: '1rem', 
+        paddingBottom: '2rem', 
+        zIndex: 10 
+      }}>
         <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center', overflowX: 'auto' }}>
           {SIZES.map(size => (
             <button
