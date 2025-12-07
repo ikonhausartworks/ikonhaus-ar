@@ -16,9 +16,19 @@ export default function IkonhausARv2() {
   const [artworkPlaced, setArtworkPlaced] = useState(false);
   const [scale, setScale] = useState(1.0);
   const [calibrationDistance, setCalibrationDistance] = useState(null);
+  const [showInstructions, setShowInstructions] = useState(true);
   const portraitInputRef = useRef(null);
   const landscapeInputRef = useRef(null);
   const arContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (step === 'ar' && showInstructions) {
+      const timer = setTimeout(() => {
+        setShowInstructions(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [step, showInstructions]);
 
   const handleImageUpload = (e, type) => {
     const file = e.target.files[0];
@@ -41,6 +51,7 @@ export default function IkonhausARv2() {
 
   const completeCalibration = (distance) => {
     setCalibrationDistance(distance);
+    setShowInstructions(true);
     setStep('ar');
   };
 
@@ -350,28 +361,32 @@ export default function IkonhausARv2() {
             </button>
           </div>
 
-          {/* Instructions Overlay */}
-          <div style={{
-            position: 'absolute',
-            top: '30%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(0,0,0,0.75)',
-            color: 'white',
-            padding: '1rem 1.5rem',
-            borderRadius: '1rem',
-            textAlign: 'center',
-            maxWidth: '80%',
-            zIndex: 5
-          }}>
-            <Camera style={{ margin: '0 auto 0.5rem' }} size={28} />
-            <p style={{ fontWeight: '500', margin: '0 0 0.25rem 0', fontSize: '1rem' }}>
-              Point at your wall
-            </p>
-            <p style={{ fontSize: '0.875rem', color: '#cbd5e1', margin: 0 }}>
-              Artwork shows at actual size
-            </p>
-          </div>
+          {/* Instructions Overlay - Auto-hides after 3 seconds */}
+          {showInstructions && (
+            <div style={{
+              position: 'absolute',
+              top: '30%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(0,0,0,0.75)',
+              color: 'white',
+              padding: '1rem 1.5rem',
+              borderRadius: '1rem',
+              textAlign: 'center',
+              maxWidth: '80%',
+              zIndex: 5,
+              animation: 'fadeOut 0.5s ease-in-out 2.5s forwards',
+              pointerEvents: 'none'
+            }}>
+              <Camera style={{ margin: '0 auto 0.5rem' }} size={28} />
+              <p style={{ fontWeight: '500', margin: '0 0 0.25rem 0', fontSize: '1rem' }}>
+                Point at your wall
+              </p>
+              <p style={{ fontSize: '0.875rem', color: '#cbd5e1', margin: 0 }}>
+                Artwork shows at actual size
+              </p>
+            </div>
+          )}
 
           {/* Bottom Controls */}
           <div style={{
