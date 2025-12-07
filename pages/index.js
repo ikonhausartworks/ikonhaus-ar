@@ -42,17 +42,37 @@ export default function IkonhausAR() {
     }
 
     try {
+      console.log('Requesting camera...');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
       });
+      
+      console.log('Camera stream obtained:', stream);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
+        
+        // Force video to play
+        try {
+          await videoRef.current.play();
+          console.log('Video playing');
+        } catch (playErr) {
+          console.error('Video play error:', playErr);
+        }
       }
       
-      setStep('camera');
+      // Small delay to ensure video is ready
+      setTimeout(() => {
+        setStep('camera');
+        console.log('Switched to camera view');
+      }, 200);
     } catch (err) {
+      console.error('Camera error:', err);
       alert(`Camera Error: ${err.message}\n\nPlease enable camera permissions in your browser settings.`);
     }
   };
@@ -67,9 +87,23 @@ export default function IkonhausAR() {
 
   const placeArtwork = (e) => {
     if (step !== 'camera') return;
+    
+    e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+    
+    console.log('Placing artwork at:', x, y);
     setArtworkPosition({ x, y });
     setArtworkPlaced(true);
   };
@@ -232,18 +266,35 @@ export default function IkonhausAR() {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'black' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'black', overflow: 'hidden' }}>
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        style={{ 
+          position: 'absolute', 
+          inset: 0, 
+          width: '100%', 
+          height: '100%', 
+          objectFit: 'cover',
+          backgroundColor: '#000',
+          transform: 'scaleX(-1)'
+        }}
+        onLoadedMetadata={(e) => {
+          console.log('Video metadata loaded:', e.target.videoWidth, 'x', e.target.videoHeight);
+          e.target.play().catch(err => console.error('Play error:', err));
+        }}
+        onCanPlay={(e) => {
+          console.log('Video can play');
+          e.target.play().catch(err => console.error('Play error:', err));
+        }}
       />
 
       <div 
-        style={{ position: 'absolute', inset: 0, cursor: 'crosshair' }}
+        style={{ position: 'absolute', inset: 0, cursor: 'crosshair', touchAction: 'none' }}
         onClick={placeArtwork}
+        onTouchEnd={placeArtwork}
       >
         {artworkPlaced && currentImage && (
           <div
@@ -254,7 +305,8 @@ export default function IkonhausAR() {
               transform: 'translate(-50%, -50%)',
               width: `${dimensions.width}px`,
               height: `${dimensions.height}px`,
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              pointerEvents: 'none'
             }}
           >
             <img
@@ -266,7 +318,7 @@ export default function IkonhausAR() {
         )}
       </div>
 
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)', padding: '1rem' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)', padding: '1rem', zIndex: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ color: 'white', fontWeight: '600', fontSize: '1.125rem', margin: 0 }}>Ikonhaus AR</h2>
           <button
@@ -287,7 +339,7 @@ export default function IkonhausAR() {
       </div>
 
       {!artworkPlaced && (
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', zIndex: 5 }}>
           <div style={{ background: 'rgba(0,0,0,0.7)', color: 'white', padding: '1rem 1.5rem', borderRadius: '0.75rem', backdropFilter: 'blur(4px)' }}>
             <Move style={{ margin: '0 auto 0.5rem' }} size={32} />
             <p style={{ fontWeight: '500', margin: '0 0 0.25rem 0' }}>Tap anywhere on the wall</p>
@@ -296,7 +348,7 @@ export default function IkonhausAR() {
         </div>
       )}
 
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', padding: '1rem', paddingBottom: '2rem' }}>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', padding: '1rem', paddingBottom: '2rem', zIndex: 10 }}>
         <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center', overflowX: 'auto' }}>
           {SIZES.map(size => (
             <button
